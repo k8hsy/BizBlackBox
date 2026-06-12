@@ -1,12 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Sun, Moon, ChevronDown } from 'lucide-react';
-
-const ROLES = { STUDENT: 'student', JM: 'junior_mentor', SM: 'senior_mentor', ADMIN: 'admin' };
-const RL = { [ROLES.STUDENT]: 'Student', [ROLES.JM]: 'Junior Mentor', [ROLES.SM]: 'Senior Mentor', [ROLES.ADMIN]: 'Admin' };
-const RC = { [ROLES.STUDENT]: '#4F6BF6', [ROLES.JM]: '#7C5CDB', [ROLES.SM]: '#D97706', [ROLES.ADMIN]: '#E04555' };
-const TN = ['Alpha','Beta','Gamma','Delta','Epsilon','Zeta','Eta','Theta','Iota','Kappa','Lambda','Mu','Nu','Xi','Omicron','Pi','Rho','Sigma','Tau','Upsilon'];
+import { useRouter } from 'next/navigation';
+import { Sun, Moon } from 'lucide-react';
 
 const THEMES = {
   coolGrey: {
@@ -47,25 +43,47 @@ const THEMES = {
   },
 };
 
-export default function AnimatedLogin({ onLogin }) {
-  const [name, setName] = useState('');
-  const [role, setRole] = useState(null);
-  const [team, setTeam] = useState('');
+export default function AnimatedLogin() {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
-  const [nameFocused, setNameFocused] = useState(false);
-  const [teamFocused, setTeamFocused] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [usernameFocused, setUsernameFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
   const [themeKey, setThemeKey] = useState('coolGrey');
   const particleCanvasRef = useRef(null);
   const cubeCanvasRef = useRef(null);
   const particleAnimRef = useRef(null);
   const cubeAnimRef = useRef(null);
   const theme = THEMES[themeKey];
+  const router = useRouter();
 
-  const go = () => {
-    if (!name.trim()) return setErr('Please enter your name');
-    if (!role) return setErr('Please select your role');
-    if ((role === ROLES.STUDENT || role === ROLES.JM) && !team) return setErr('Please select your team');
-    onLogin({ name: name.trim(), role, team: team ? parseInt(team) : null });
+  const go = async () => {
+    if (!username.trim()) return setErr('Please enter your username');
+    if (!password) return setErr('Please enter your password');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(data.error || 'Invalid username or password');
+        return;
+      }
+      if (data.mustChangePassword) {
+        router.push('/change-password');
+      } else {
+        router.push('/');
+        router.refresh();
+      }
+    } catch {
+      setErr('Network error — is the server running?');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Particle background
@@ -286,65 +304,34 @@ export default function AnimatedLogin({ onLogin }) {
               Sign in to continue to BBB 2026
             </p>
 
-            {/* Name */}
+            {/* Username */}
             <div style={{ position: 'relative', marginBottom: 16 }}>
               <input
-                value={name}
-                onChange={e => { setName(e.target.value); setErr(''); }}
-                onFocus={() => setNameFocused(true)}
-                onBlur={() => setNameFocused(false)}
+                value={username}
+                onChange={e => { setUsername(e.target.value); setErr(''); }}
+                onFocus={() => setUsernameFocused(true)}
+                onBlur={() => setUsernameFocused(false)}
                 onKeyDown={e => e.key === 'Enter' && go()}
-                style={inputStyle(nameFocused, name)}
+                autoComplete="username"
+                style={inputStyle(usernameFocused, username)}
               />
-              <label style={labelStyle(nameFocused, name)}>Your Name</label>
+              <label style={labelStyle(usernameFocused, username)}>Username</label>
             </div>
 
-            {/* Role */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: theme.labelActive, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 8 }}>
-                Your Role
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {Object.entries(ROLES).map(([k, v]) => (
-                  <button
-                    key={k}
-                    className="al-role"
-                    onClick={() => { setRole(v); setTeam(''); setErr(''); }}
-                    style={{
-                      padding: '10px 8px', borderRadius: 10,
-                      border: `1px solid ${role === v ? RC[v] : theme.btnBorder}`,
-                      background: role === v ? `${RC[v]}22` : theme.btnBg,
-                      color: role === v ? RC[v] : theme.textSub,
-                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      fontFamily: 'inherit', transition: 'all 0.15s',
-                      backdropFilter: 'blur(4px)',
-                    }}
-                  >
-                    {RL[v]}
-                  </button>
-                ))}
-              </div>
+            {/* Password */}
+            <div style={{ position: 'relative', marginBottom: 16 }}>
+              <input
+                type="password"
+                value={password}
+                onChange={e => { setPassword(e.target.value); setErr(''); }}
+                onFocus={() => setPasswordFocused(true)}
+                onBlur={() => setPasswordFocused(false)}
+                onKeyDown={e => e.key === 'Enter' && go()}
+                autoComplete="current-password"
+                style={inputStyle(passwordFocused, password)}
+              />
+              <label style={labelStyle(passwordFocused, password)}>Password</label>
             </div>
-
-            {/* Team */}
-            {(role === ROLES.STUDENT || role === ROLES.JM) && (
-              <div className="al-team" style={{ position: 'relative', marginBottom: 16 }}>
-                <select
-                  value={team}
-                  onChange={e => { setTeam(e.target.value); setErr(''); }}
-                  onFocus={() => setTeamFocused(true)}
-                  onBlur={() => setTeamFocused(false)}
-                  style={{ ...inputStyle(teamFocused, team), padding: '22px 36px 8px 16px', cursor: 'pointer' }}
-                >
-                  <option value=""></option>
-                  {TN.map((n, i) => <option key={i} value={i + 1}>Team {n}</option>)}
-                </select>
-                <label style={labelStyle(true, true)}>Your Team</label>
-                <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: theme.label, pointerEvents: 'none' }}>
-                  <ChevronDown size={15} />
-                </div>
-              </div>
-            )}
 
             {/* Error */}
             {err && (
@@ -362,19 +349,21 @@ export default function AnimatedLogin({ onLogin }) {
             <button
               className="al-submit"
               onClick={go}
+              disabled={loading}
               style={{
                 width: '100%', padding: '14px 20px',
                 borderRadius: 12, border: '1px solid rgba(255,255,255,0.30)',
                 background: 'rgba(255,255,255,0.16)',
                 color: theme.text, fontSize: 14, fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'inherit',
+                cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit',
                 backdropFilter: 'blur(8px)',
                 transition: 'all 0.2s',
                 boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
                 letterSpacing: '0.02em',
+                opacity: loading ? 0.7 : 1,
               }}
             >
-              Enter Portal
+              {loading ? 'Signing in…' : 'Enter Portal'}
             </button>
 
             <div style={{ textAlign: 'center', marginTop: 20, fontSize: 11, color: theme.textSub }}>
