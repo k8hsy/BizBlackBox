@@ -227,17 +227,20 @@ export default function BBBPortal(){
   const[users,setUsers]=useState([]);
   const[moreOpen,setMoreOpen]=useState(false);
 
-  const reloadTeams=()=>fetch("/api/teams").then(r=>r.json()).then(setTeams).catch(()=>{});
-  const reloadSubs=()=>fetch("/api/submissions").then(r=>r.json()).then(setSubmissions).catch(()=>{});
-  const reloadQna=()=>fetch("/api/qna").then(r=>r.json()).then(setQna).catch(()=>{});
-  const reloadAnn=()=>fetch("/api/announcements").then(r=>r.json()).then(setAnn).catch(()=>{});
-  const reloadSched=()=>fetch("/api/schedule").then(r=>r.json()).then(setSched).catch(()=>{});
-  const reloadSm=()=>fetch("/api/mentors-sm").then(r=>r.json()).then(setSmList).catch(()=>{});
-  const reloadVenue=()=>fetch("/api/venue").then(r=>r.json()).then(setVenueList).catch(()=>{});
-  const reloadPrelim=()=>fetch("/api/prelim").then(r=>r.json()).then(setPrelimList).catch(()=>{});
-  const reloadRoomMap=()=>fetch("/api/room-map").then(r=>r.json()).then(setRoomMap).catch(()=>{});
-  const reloadTransport=()=>fetch("/api/transport").then(r=>r.json()).then(setTransport).catch(()=>{});
-  const reloadUsers=()=>fetch("/api/users").then(r=>r.json()).then(setUsers).catch(()=>{});
+  // Defensive: if API returns non-2xx (e.g. 401/403/500), coerce to empty array
+  // so downstream `.filter()` / `.map()` never crash the UI.
+  const safeArr=(setter)=>(r)=>r.ok?r.json().then(d=>setter(Array.isArray(d)?d:[])):setter([]);
+  const reloadTeams=()=>fetch("/api/teams").then(safeArr(setTeams)).catch(()=>setTeams([]));
+  const reloadSubs=()=>fetch("/api/submissions").then(safeArr(setSubmissions)).catch(()=>setSubmissions([]));
+  const reloadQna=()=>fetch("/api/qna").then(safeArr(setQna)).catch(()=>setQna([]));
+  const reloadAnn=()=>fetch("/api/announcements").then(safeArr(setAnn)).catch(()=>setAnn([]));
+  const reloadSched=()=>fetch("/api/schedule").then(safeArr(setSched)).catch(()=>setSched([]));
+  const reloadSm=()=>fetch("/api/mentors-sm").then(safeArr(setSmList)).catch(()=>setSmList([]));
+  const reloadVenue=()=>fetch("/api/venue").then(safeArr(setVenueList)).catch(()=>setVenueList([]));
+  const reloadPrelim=()=>fetch("/api/prelim").then(safeArr(setPrelimList)).catch(()=>setPrelimList([]));
+  const reloadRoomMap=()=>fetch("/api/room-map").then(safeArr(setRoomMap)).catch(()=>setRoomMap([]));
+  const reloadTransport=()=>fetch("/api/transport").then(r=>r.ok?r.json().then(setTransport):setTransport(null)).catch(()=>setTransport(null));
+  const reloadUsers=()=>fetch("/api/users").then(safeArr(setUsers)).catch(()=>setUsers([]));
 
   useEffect(()=>{
     let cancelled=false;
