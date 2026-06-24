@@ -1389,6 +1389,7 @@ function AdminUsersTable({section}){
     <div>
       {creds&&<PasswordRevealModal creds={creds} onClose={()=>setCreds(null)}/>}
       <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search by name or username…" style={{...adminInputSt,marginBottom:12}}/>
+      {!adding&&<button onClick={()=>setAdding(true)} style={{...adminBtnSt,background:s.accent,color:"#fff",marginBottom:12}}>+ Add User</button>}
       {adding&&<AdminRowEditor fields={addFields} onSave={submitAdd} onCancel={()=>setAdding(false)}/>}
       {(filtered||[]).map(u=>(
         editingId===u.id?
@@ -1407,7 +1408,6 @@ function AdminUsersTable({section}){
             <button onClick={()=>del(u.id,u.username)} style={{...adminBtnSt,background:"#fff",border:`1px solid ${s.border}`,color:s.err}}>Delete</button>
           </div>
       ))}
-      {!adding&&<button onClick={()=>setAdding(true)} style={{...adminBtnSt,background:s.accent,color:"#fff",marginTop:8}}>+ Add User</button>}
     </div>
   );
 }
