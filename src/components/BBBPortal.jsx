@@ -1752,8 +1752,6 @@ function PgStudents({teams,actions}){
     setForm({
       phone:sel.phone||"",
       email:sel.email||"",
-      room:sel.room||"",
-      floor:sel.floor||"",
       transport:sel.transport||"",
       insurance:sel.insurance||"",
       emergencyName:sel.emergencyName||"",
@@ -1776,8 +1774,7 @@ function PgStudents({teams,actions}){
   if(sel){
     const sections=[
       {label:"Contact",keys:[["phone","Phone",true],["email","Email",false]]},
-      {label:"Dorm Room",keys:[["room","Room",true],["floor","Floor",true]]},
-      {label:"Work Room",readonly:true,fields:[{l:"Work Room",v:sel.team.workRoom,m:true}]},
+      {label:"Room & Team",readonly:true,fields:[{l:"Dorm Room",v:sel.room,m:true},{l:"Floor",v:sel.floor,m:true},{l:"Work Room",v:sel.team.workRoom,m:true}]},
       {label:"Logistics",keys:[["transport","Transport",false],["insurance","Insurance",false]]},
       {label:"Emergency Contact",keys:[["emergencyName","Name",false],["emergencyRel","Relationship",false],["emergencyPhone","Phone",true]]},
     ];
