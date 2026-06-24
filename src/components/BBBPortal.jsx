@@ -221,6 +221,11 @@ export default function BBBPortal(){
   const[moreOpen,setMoreOpen]=useState(false);
   const toast=useToasts();
   useTick(60000); // refresh relTime strings every minute
+  // Timestamp of the last local optimistic mutation. The background poll skips
+  // a beat right after one so an in-flight refetch can't momentarily revert
+  // what the user just did before their write lands.
+  const recentMutationRef=useRef(0);
+  const markMutation=()=>{recentMutationRef.current=Date.now();};
 
   // Session-expired bounce: clear stale cookie then redirect to /login.
   const bounceToLogin=async()=>{
@@ -262,11 +267,34 @@ export default function BBBPortal(){
     return()=>{cancelled=true;};
   },[]);
 
+  // Load everything once on login, then keep it fresh in the background so one
+  // user's change (a new Q&A question, a check-in, an edit) shows up on every
+  // other user's screen without a manual reload.
   useEffect(()=>{
     if(!user)return;
-    reloadTeams();reloadSubs();reloadQna();reloadAnn();
-    reloadSched();reloadSm();reloadVenue();reloadPrelim();reloadTransport();
-    if(user.role===ROLES.ADMIN)reloadUsers();
+    // Frequently-changing collections — polled on a short interval.
+    const refreshLive=()=>{
+      reloadTeams();reloadSubs();reloadQna();reloadAnn();
+      if(user.role===ROLES.ADMIN)reloadUsers();
+    };
+    // Everything, including rarely-changing config — on first load and whenever
+    // the tab regains focus.
+    const refreshAll=()=>{
+      refreshLive();
+      reloadSched();reloadSm();reloadVenue();reloadPrelim();reloadTransport();
+    };
+    refreshAll();
+    // Only poll while the tab is visible — no point hammering the API in the
+    // background, and we do a full refresh the moment the tab is focused again.
+    const id=setInterval(()=>{
+      if(document.visibilityState!=="visible")return;
+      if(Date.now()-recentMutationRef.current<4000)return; // let a just-made change settle
+      refreshLive();
+    },10000);
+    const onVisible=()=>{if(document.visibilityState==="visible")refreshAll();};
+    document.addEventListener("visibilitychange",onVisible);
+    window.addEventListener("focus",onVisible);
+    return()=>{clearInterval(id);document.removeEventListener("visibilitychange",onVisible);window.removeEventListener("focus",onVisible);};
   },[user]);
 
   const logout=async()=>{
@@ -294,6 +322,7 @@ export default function BBBPortal(){
     const tm=teams.find(x=>x.id===tid);if(!tm)return;
     const st=tm.students.find(x=>x.id===sid);if(!st)return;
     const next=!st.checkedIn;
+    markMutation();
     setTeams(p=>p.map(t=>t.id===tid?{...t,students:t.students.map(s=>s.id===sid?{...s,checkedIn:next}:s)}:t));
     fetch(`/api/teams/${tid}/checkin`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({studentId:sid,checkedIn:next})}).then(r=>{
       if(r.status===401)return bounceToLogin();
@@ -304,6 +333,7 @@ export default function BBBPortal(){
   // — don't send them from the client. We pass the local user.name into the
   // optimistic-update so the UI shows the right name before the refetch.
   const setSubmissionStatus=(teamId,submitted)=>{
+    markMutation();
     setSubmissions(p=>p.map(x=>x.teamId===teamId?{...x,submitted,by:user.name,ts:Date.now()}:x));
     fetch("/api/submissions",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({teamId,submitted})}).then(r=>{
       if(r.status===401)return bounceToLogin();
@@ -359,10 +389,12 @@ export default function BBBPortal(){
       const data=await res.json().catch(()=>({}));
       if(!res.ok){toast.error(data.error||"Failed to add student");return null;}
       const tid=parseInt(teamId);
+      markMutation();
       setTeams(p=>p.map(t=>t.id===tid?{...t,students:[...(t.students||[]),data]}:t));
       return data;
     },
     update:async(teamId,studentId,form)=>{
+      markMutation();
       setTeams(p=>p.map(t=>t.id===teamId?{...t,students:t.students.map(st=>st.id===studentId?{...st,...form}:st)}:t));
       const res=await fetch(`/api/teams/${teamId}/students/${studentId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(form)}).catch(()=>null);
       if(!res||!res.ok){const j=res?await res.json().catch(()=>({})):{};toast.error(j.error||"Couldn't save — reverted");reloadTeams();return false;}
@@ -370,6 +402,7 @@ export default function BBBPortal(){
     },
     // Mirror the server cascade: drop the roster entry AND the linked user.
     remove:async(teamId,studentId,userId)=>{
+      markMutation();
       setTeams(p=>p.map(t=>t.id===teamId?{...t,students:t.students.filter(st=>st.id!==studentId)}:t));
       if(userId)setUsers(p=>p.filter(u=>u.id!==String(userId)));
       const res=await fetch(`/api/teams/${teamId}/students/${studentId}`,{method:"DELETE"}).catch(()=>null);
@@ -386,6 +419,7 @@ export default function BBBPortal(){
       if(!res||res.status===401){if(res)bounceToLogin();else toast.error("Network error");return null;}
       const data=await res.json().catch(()=>({}));
       if(!res.ok){toast.error(data.error||"Failed to add user");return null;}
+      markMutation();
       setUsers(p=>[...p,{id:data.id,name:data.name,username:data.username,email:data.email,role:data.role,teamId:data.teamId,mustChangePassword:true}]);
       if(data.studentLinked)reloadTeams();
       return data;
@@ -395,6 +429,7 @@ export default function BBBPortal(){
       // edit (from the Rooms tab) must not clobber the user's team.
       const patch={...form};
       if("teamId" in form)patch.teamId=form.teamId===""||form.teamId==null?null:parseInt(form.teamId);
+      markMutation();
       setUsers(p=>p.map(u=>u.id===id?{...u,...patch}:u));
       const res=await fetch(`/api/users/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(form)}).catch(()=>null);
       if(!res||!res.ok){toast.error("Couldn't update — reverted");reloadUsers();return false;}
@@ -402,6 +437,7 @@ export default function BBBPortal(){
     },
     // Mirror the server cascade: drop the user AND any roster entry linked to it.
     remove:async(id)=>{
+      markMutation();
       setUsers(p=>p.filter(u=>u.id!==id));
       setTeams(p=>p.map(t=>({...t,students:(t.students||[]).filter(st=>String(st.userId)!==id)})));
       const res=await fetch(`/api/users/${id}`,{method:"DELETE"}).catch(()=>null);
