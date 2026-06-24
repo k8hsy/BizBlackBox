@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { requireAdmin, safeObjectId, ROLES, canonicalUsername } from "@/lib/auth";
 
@@ -63,13 +64,18 @@ export async function DELETE(_req, { params }) {
   if (error) return error;
 
   const { id } = await params;
-  const oid = safeObjectId(id);
-  if (!oid) return NextResponse.json({ error: "invalid id" }, { status: 400 });
-
   const db = await getDb();
-  const result = await db.collection("users").deleteOne({ _id: oid });
+  const result = await db.collection("users").deleteOne({ _id: new ObjectId(id) });
   if (result.deletedCount === 0) return NextResponse.json({ error: "not found" }, { status: 404 });
-  // Clean up that user's sessions so they're booted immediately.
-  await db.collection("sessions").deleteMany({ userId: id }).catch(() => {});
+
+  // Cascade: remove the linked roster entry from any team. Students created via
+  // Admin Console get `userId` stamped on the embedded entry (see /api/users POST).
+  await db.collection("teams").updateMany(
+    { "students.userId": id },
+    { $pull: { students: { userId: id } } }
+  );
+  // Invalidate any active sessions for this account.
+  try { await db.collection("sessions").deleteMany({ userId: new ObjectId(id) }); } catch {}
+
   return NextResponse.json({ ok: true });
 }

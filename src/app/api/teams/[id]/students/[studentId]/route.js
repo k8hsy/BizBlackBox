@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { requireAdmin } from "@/lib/auth";
 
@@ -21,6 +22,13 @@ export async function DELETE(_req, { params }) {
   const teamId = parseInt(id);
 
   const db = await getDb();
+  // Look up the linked userId before removing the roster entry so we can cascade.
+  const team = await db.collection("teams").findOne(
+    { _id: teamId, "students.id": studentId },
+    { projection: { "students.$": 1 } }
+  );
+  const linkedUserId = team?.students?.[0]?.userId || null;
+
   const result = await db.collection("teams").updateOne(
     { _id: teamId },
     { $pull: { students: { id: studentId } } }
@@ -31,6 +39,16 @@ export async function DELETE(_req, { params }) {
   if (result.modifiedCount === 0) {
     return NextResponse.json({ error: "student not found" }, { status: 404 });
   }
+
+  // Cascade: delete the linked login user (if any) and their sessions.
+  if (linkedUserId) {
+    try {
+      const oid = new ObjectId(linkedUserId);
+      await db.collection("users").deleteOne({ _id: oid });
+      await db.collection("sessions").deleteMany({ userId: oid });
+    } catch {}
+  }
+
   return NextResponse.json({ ok: true });
 }
 

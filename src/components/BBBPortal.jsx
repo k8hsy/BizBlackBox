@@ -353,7 +353,7 @@ export default function BBBPortal(){
     venue:{items:venueList,add:d=>crudAdd("/api/venue",d,reloadVenue),edit:(id,d)=>crudEdit("/api/venue",id,d,reloadVenue),del:id=>crudDel("/api/venue",id,reloadVenue)},
     prelim:{items:prelimList,add:d=>crudAdd("/api/prelim",d,reloadPrelim),edit:(id,d)=>crudEdit("/api/prelim",id,d,reloadPrelim),del:id=>crudDel("/api/prelim",id,reloadPrelim)},
     roomMap:{items:roomMap,add:d=>crudAdd("/api/room-map",d,reloadRoomMap),edit:(id,d)=>crudEdit("/api/room-map",id,d,reloadRoomMap),del:id=>crudDel("/api/room-map",id,reloadRoomMap)},
-    users:{items:users,reload:reloadUsers},
+    users:{items:users,reload:async()=>{await reloadUsers();await reloadTeams();}},
     transport:{doc:transport,save:saveTransport},
   };
 
@@ -375,7 +375,7 @@ export default function BBBPortal(){
     contacts:<PgContacts teams={teams} smList={smList}/>,
     submission:<PgSubmission user={user} teams={teams} submissions={submissions} onUpdate={setSubmissionStatus}/>,
     checkin:<PgCheckin user={user} teams={teams} onChk={chk}/>,
-    students:user.role===ROLES.ADMIN?<PgStudents teams={teams} roomMap={roomMap} reloadTeams={reloadTeams}/>:null,
+    students:user.role===ROLES.ADMIN?<PgStudents teams={teams} roomMap={roomMap} reloadTeams={reloadTeams} reloadUsers={reloadUsers}/>:null,
     admin:user.role===ROLES.ADMIN?<PgAdmin api={adminApi}/>:null,
     qna:<PgQna user={user} items={qna} onAns={answerQna} onAsk={askQna}/>,
     announcements:<PgAnn user={user} items={ann} onAdd={addAnn} onPin={pinAnn} onEdit={editAnn} onDel={delAnn}/>,
@@ -1597,7 +1597,7 @@ function AddStudentModal({teams,form,setForm,onSave,onClose,saving}){
   );
 }
 
-function PgStudents({teams,roomMap=[],reloadTeams}){
+function PgStudents({teams,roomMap=[],reloadTeams,reloadUsers}){
   const rmLookup=Object.fromEntries(roomMap.map(r=>[r.person,{room:r.room,floor:r.floor}]));
   const[srch,setSrch]=useState("");
   const[selKey,setSelKey]=useState(null); // {teamId, studentId}
@@ -1617,7 +1617,7 @@ function PgStudents({teams,roomMap=[],reloadTeams}){
       const res=await fetch(`/api/teams/${addForm.teamId}/students`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(addForm)});
       if(!res.ok){const j=await res.json().catch(()=>({}));alert(j.error||"Failed to add student");return;}
       const newStudent=await res.json();
-      await reloadTeams?.();
+      await Promise.all([reloadTeams?.(),reloadUsers?.()]);
       setAddOpen(false);
       setSelKey({teamId:parseInt(addForm.teamId),studentId:newStudent.id});
     }finally{setAddSaving(false);}
@@ -1627,7 +1627,7 @@ function PgStudents({teams,roomMap=[],reloadTeams}){
     if(!confirm(`Delete ${sel.name}? This removes them from ${sel.team.name} and cannot be undone.`))return;
     const res=await fetch(`/api/teams/${sel.team.id}/students/${sel.id}`,{method:"DELETE"});
     if(!res.ok){const j=await res.json().catch(()=>({}));alert(j.error||"Failed to delete");return;}
-    await reloadTeams?.();
+    await Promise.all([reloadTeams?.(),reloadUsers?.()]);
     setSelKey(null);
   };
 
@@ -1653,7 +1653,7 @@ function PgStudents({teams,roomMap=[],reloadTeams}){
     try{
       const res=await fetch(`/api/teams/${sel.team.id}/students/${sel.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(form)});
       if(!res.ok){const j=await res.json().catch(()=>({}));alert(j.error||"Failed to save");return;}
-      await reloadTeams?.();
+      await Promise.all([reloadTeams?.(),reloadUsers?.()]);
       setEditing(false);setForm(null);
     }finally{setSaving(false);}
   };
