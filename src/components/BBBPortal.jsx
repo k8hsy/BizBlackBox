@@ -468,7 +468,6 @@ export default function BBBPortal(){
 
   const adminApi={
     sched:{items:sched,add:d=>crudAdd("/api/schedule",d,reloadSched),edit:(id,d)=>crudEdit("/api/schedule",id,d,reloadSched),del:id=>crudDel("/api/schedule",id,reloadSched)},
-    sm:{mentors},
     venue:{items:venueList,add:d=>crudAdd("/api/venue",d,reloadVenue),edit:(id,d)=>crudEdit("/api/venue",id,d,reloadVenue),del:id=>crudDel("/api/venue",id,reloadVenue)},
     prelim:{items:prelimList,add:d=>crudAdd("/api/prelim",d,reloadPrelim),edit:(id,d)=>crudEdit("/api/prelim",id,d,reloadPrelim),del:id=>crudDel("/api/prelim",id,reloadPrelim)},
     rooms:{teams,users,updateStudent:studentActions.update,updateUser:userActions.update},
@@ -1771,31 +1770,9 @@ function AdminScheduleEditor({section}){
   );
 }
 
-// Read-only view of senior mentors, derived from the users collection. Editing
-// happens in the Users tab; this stays in sync automatically.
-function AdminSmTable({section}){
-  const sms=(section.mentors||[]).filter(m=>m.role==="senior_mentor").sort((a,b)=>a.name.localeCompare(b.name));
-  return(
-    <div>
-      <div style={{fontSize:12,color:s.txt2,marginBottom:14,padding:"10px 14px",borderRadius:10,background:"#fff",border:`1px solid ${s.border}`,lineHeight:1.5}}>Senior mentors are managed in the <strong>Users</strong> tab — add, edit, or remove them there and this list updates automatically.</div>
-      {sms.length===0&&<div style={{padding:14,color:s.txt2,fontSize:13}}>No senior mentors yet.</div>}
-      {sms.map(m=>(
-        <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,background:"#fafafb",border:`1px solid ${s.border}`,marginBottom:6}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:600,fontSize:13,color:s.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</div>
-            <div style={{fontSize:11,color:s.txt2}}>{m.email||"—"}</div>
-          </div>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:s.txt2}}>{m.phone||"—"}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function PgAdmin({api}){
   const sections={
     sched:{label:"Schedule",fields:[{k:"time",l:"Time"},{k:"ev",l:"Event"},{k:"loc",l:"Location"},{k:"day",l:"Day",type:"number"},{k:"type",l:"Type",options:[{v:"transport",l:"Transport"},{v:"logistics",l:"Logistics"},{v:"ceremony",l:"Ceremony"},{v:"competition",l:"Competition"},{v:"break",l:"Break"},{v:"mentoring",l:"Mentoring"}]},{k:"order",l:"Order",type:"number"}]},
-    sm:{label:"Senior Mentors"},
     venue:{label:"Venue",fields:[{k:"name",l:"Name"},{k:"floor",l:"Floor",options:[{v:"1F",l:"1F"},{v:"2F",l:"2F"},{v:"3F",l:"3F"}]},{k:"purpose",l:"Purpose"},{k:"cap",l:"Capacity"}]},
     prelim:{label:"Prelim Brackets",fields:[{k:"teams",l:"Team IDs (csv)",type:"csv-num"},{k:"time",l:"Time"},{k:"room",l:"Room"}]},
     rooms:{label:"Rooms"},
@@ -1818,8 +1795,6 @@ function PgAdmin({api}){
           <AdminRoomsTable section={api.rooms}/>:
         tab==="users"?
           <AdminUsersTable section={api.users}/>:
-        tab==="sm"?
-          <AdminSmTable section={api.sm}/>:
         tab==="sched"?
           <AdminScheduleEditor section={api.sched}/>:
           <AdminCrudTable section={api[tab]} fields={current.fields}/>
