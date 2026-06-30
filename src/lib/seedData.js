@@ -3,7 +3,7 @@ const TN = ["Alpha","Beta","Gamma","Delta","Epsilon","Zeta","Eta","Theta","Iota"
 export function buildTeams() {
   return TN.map((n, i) => ({
     _id: i + 1,
-    name: `Team ${n}`,
+    name: `Team ${i + 1}`,
     jm: `JM ${n}`,
     jmPhone: `010-${String(1000 + i).padStart(4, "0")}-${String(5000 + i).padStart(4, "0")}`,
     jmEmail: `jm.${n.toLowerCase()}@bbb.org`,
@@ -48,6 +48,7 @@ export function buildUsers() {
       role: "junior_mentor",
       teamId: i + 1,
       email: `jm.${n.toLowerCase()}@bbb.org`,
+      phone: `010-${String(1000 + i).padStart(4, "0")}-${String(5000 + i).padStart(4, "0")}`,
       // Mentor dorm room lives on the user record.
       room: `Room ${321 + Math.floor(i / 4)}`,
       floor: "3F",
@@ -65,13 +66,14 @@ export function buildUsers() {
       });
     }
   });
-  ["Kim", "Lee", "Park", "Choi"].forEach((s) => {
+  ["Kim", "Lee", "Park", "Choi"].forEach((s, i) => {
     users.push({
       name: `SM ${s}`,
       username: `sm.${s.toLowerCase()}`,
       role: "senior_mentor",
       teamId: null,
       email: `sm.${s.toLowerCase()}@bbb.org`,
+      phone: `010-9000-${String(1 + i).padStart(4, "0")}`,
       mustChangePassword: true,
     });
   });
@@ -133,15 +135,6 @@ export function buildSchedule() {
     { time: "18:00", ev: "Closing & Departure", loc: "Main Lobby", day: 2, type: "logistics" },
   ];
   return items.map((x, i) => ({ ...x, order: i }));
-}
-
-export function buildMentorsSM() {
-  return [
-    { name: "SM Kim", phone: "010-9000-0001", email: "sm.kim@bbb.org", teams: "Teams 1–5" },
-    { name: "SM Lee", phone: "010-9000-0002", email: "sm.lee@bbb.org", teams: "Teams 6–10" },
-    { name: "SM Park", phone: "010-9000-0003", email: "sm.park@bbb.org", teams: "Teams 11–15" },
-    { name: "SM Choi", phone: "010-9000-0004", email: "sm.choi@bbb.org", teams: "Teams 16–20" },
-  ];
 }
 
 export function buildVenue() {

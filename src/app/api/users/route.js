@@ -20,6 +20,7 @@ export async function GET() {
     name: x.name,
     username: x.username || null,
     email: x.email || null,
+    phone: x.phone ?? null,
     role: x.role,
     teamId: x.teamId ?? null,
     room: x.room ?? null,
@@ -33,7 +34,7 @@ export async function POST(req) {
   if (error) return error;
 
   const body = await req.json();
-  const { name, username, email, role, teamId } = body;
+  const { name, username, email, phone, role, teamId } = body;
   if (!name || !username || !role) {
     return NextResponse.json({ error: "name, username, and role required" }, { status: 400 });
   }
@@ -69,6 +70,7 @@ export async function POST(req) {
     name,
     username: normalizedUsername,
     email: email || null,
+    phone: phone || null,
     role,
     teamId: parsedTeamId,
     passwordHash,

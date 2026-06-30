@@ -213,7 +213,7 @@ export default function BBBPortal(){
   const[qna,setQna]=useState([]);
   const[ann,setAnn]=useState([]);
   const[sched,setSched]=useState([]);
-  const[smList,setSmList]=useState([]);
+  const[mentors,setMentors]=useState([]);
   const[venueList,setVenueList]=useState([]);
   const[prelimList,setPrelimList]=useState([]);
   const[transport,setTransport]=useState(null);
@@ -245,7 +245,7 @@ export default function BBBPortal(){
   const reloadQna=()=>fetch("/api/qna").then(safeArr(setQna)).catch(()=>setQna([]));
   const reloadAnn=()=>fetch("/api/announcements").then(safeArr(setAnn)).catch(()=>setAnn([]));
   const reloadSched=()=>fetch("/api/schedule").then(safeArr(setSched)).catch(()=>setSched([]));
-  const reloadSm=()=>fetch("/api/mentors-sm").then(safeArr(setSmList)).catch(()=>setSmList([]));
+  const reloadMentors=()=>fetch("/api/mentors").then(safeArr(setMentors)).catch(()=>setMentors([]));
   const reloadVenue=()=>fetch("/api/venue").then(safeArr(setVenueList)).catch(()=>setVenueList([]));
   const reloadPrelim=()=>fetch("/api/prelim").then(safeArr(setPrelimList)).catch(()=>setPrelimList([]));
   const reloadTransport=()=>fetch("/api/transport").then(r=>{
@@ -274,14 +274,14 @@ export default function BBBPortal(){
     if(!user)return;
     // Frequently-changing collections — polled on a short interval.
     const refreshLive=()=>{
-      reloadTeams();reloadSubs();reloadQna();reloadAnn();
+      reloadTeams();reloadSubs();reloadQna();reloadAnn();reloadMentors();
       if(user.role===ROLES.ADMIN)reloadUsers();
     };
     // Everything, including rarely-changing config — on first load and whenever
     // the tab regains focus.
     const refreshAll=()=>{
       refreshLive();
-      reloadSched();reloadSm();reloadVenue();reloadPrelim();reloadTransport();
+      reloadSched();reloadVenue();reloadPrelim();reloadTransport();
     };
     refreshAll();
     // Only poll while the tab is visible — no point hammering the API in the
@@ -438,6 +438,7 @@ export default function BBBPortal(){
       markMutation();
       setUsers(p=>[...p,{id:data.id,name:data.name,username:data.username,email:data.email,role:data.role,teamId:data.teamId,mustChangePassword:true}]);
       if(data.studentLinked)reloadTeams();
+      if(data.role==="junior_mentor"||data.role==="senior_mentor")reloadMentors(); // keep Contacts/SM view in sync
       return data;
     },
     update:async(id,form)=>{
@@ -449,6 +450,7 @@ export default function BBBPortal(){
       setUsers(p=>p.map(u=>u.id===id?{...u,...patch}:u));
       const res=await fetch(`/api/users/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(form)}).catch(()=>null);
       if(!res||!res.ok){toast.error("Couldn't update — reverted");reloadUsers();return false;}
+      reloadMentors(); // a name/phone/email/role change may affect Contacts
       return true;
     },
     // Mirror the server cascade: drop the user AND any roster entry linked to it.
@@ -458,13 +460,14 @@ export default function BBBPortal(){
       setTeams(p=>p.map(t=>({...t,students:(t.students||[]).filter(st=>String(st.userId)!==id)})));
       const res=await fetch(`/api/users/${id}`,{method:"DELETE"}).catch(()=>null);
       if(!res||!res.ok){toast.error("Couldn't delete — reverted");reloadUsers();reloadTeams();return false;}
+      reloadMentors(); // removed mentor should drop off Contacts
       return true;
     },
   };
 
   const adminApi={
     sched:{items:sched,add:d=>crudAdd("/api/schedule",d,reloadSched),edit:(id,d)=>crudEdit("/api/schedule",id,d,reloadSched),del:id=>crudDel("/api/schedule",id,reloadSched)},
-    sm:{items:smList,add:d=>crudAdd("/api/mentors-sm",d,reloadSm),edit:(id,d)=>crudEdit("/api/mentors-sm",id,d,reloadSm),del:id=>crudDel("/api/mentors-sm",id,reloadSm)},
+    sm:{mentors},
     venue:{items:venueList,add:d=>crudAdd("/api/venue",d,reloadVenue),edit:(id,d)=>crudEdit("/api/venue",id,d,reloadVenue),del:id=>crudDel("/api/venue",id,reloadVenue)},
     prelim:{items:prelimList,add:d=>crudAdd("/api/prelim",d,reloadPrelim),edit:(id,d)=>crudEdit("/api/prelim",id,d,reloadPrelim),del:id=>crudDel("/api/prelim",id,reloadPrelim)},
     rooms:{teams,users,updateStudent:studentActions.update,updateUser:userActions.update},
@@ -487,7 +490,7 @@ export default function BBBPortal(){
     transport:<PgTransport transport={transport}/>,
     venue:<PgVenue venueList={venueList}/>,
     rooms:<PgRooms user={user} teams={teams} users={users}/>,
-    contacts:<PgContacts teams={teams} smList={smList}/>,
+    contacts:<PgContacts teams={teams} mentors={mentors}/>,
     submission:<PgSubmission user={user} teams={teams} submissions={submissions} onUpdate={setSubmissionStatus}/>,
     checkin:<PgCheckin user={user} teams={teams} onChk={chk}/>,
     students:user.role===ROLES.ADMIN?<PgStudents teams={teams} actions={studentActions}/>:null,
@@ -709,7 +712,8 @@ function PgSchedule({user,teams,sched=[],prelimList=[]}){
 
 function PgTeams({user,teams}){
   const[srch,setSrch]=useState("");const[exp,setExp]=useState(user.team||null);
-  const filt=teams.filter(tm=>tm.name.toLowerCase().includes(srch.toLowerCase())||tm.jm.toLowerCase().includes(srch.toLowerCase()));
+  // Only show teams that actually have members.
+  const filt=teams.filter(tm=>(tm.students||[]).length>0).filter(tm=>tm.name.toLowerCase().includes(srch.toLowerCase())||tm.jm.toLowerCase().includes(srch.toLowerCase()));
   return(
     <div style={{animation:"fadeUp 0.4s ease"}}>
       <PageHeader eyebrow="Participants">Teams &amp; Mentors</PageHeader>
@@ -954,7 +958,7 @@ function PgCheckin({user,teams,onChk}){
   const[sel,setSel]=useState(user.team||1);
   const myTm=user.team?teams.find(x=>x.id===user.team):null;
   if(user.role===ROLES.ADMIN||user.role===ROLES.SM){
-    const team=teams.find(x=>x.id===sel);const gc=teams.reduce((a,x)=>a+x.students.filter(st=>st.checkedIn).length,0);const gt=teams.reduce((a,x)=>a+x.students.length,0);
+    const liveTeams=teams.filter(x=>(x.students||[]).length>0);const team=liveTeams.find(x=>x.id===sel)||liveTeams[0];const gc=liveTeams.reduce((a,x)=>a+x.students.filter(st=>st.checkedIn).length,0);const gt=liveTeams.reduce((a,x)=>a+x.students.length,0);
     return(
       <div style={{animation:"fadeUp 0.4s ease"}}>
         <PageHeader eyebrow="Attendance">Check-in</PageHeader>
@@ -966,13 +970,13 @@ function PgCheckin({user,teams,onChk}){
             </div>
             <div style={{borderRadius:12,padding:"20px 18px",background:"rgba(255,255,255,0.06)"}}>
               <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,letterSpacing:"0.16em",textTransform:"uppercase",color:"#fff",opacity:0.5,marginBottom:10}}>Teams Complete</div>
-              <div style={{fontWeight:800,fontSize:44,lineHeight:1,letterSpacing:"-0.02em",color:"#fff"}}>{teams.filter(tm=>tm.students.every(st=>st.checkedIn)).length}/{teams.length}</div>
+              <div style={{fontWeight:800,fontSize:44,lineHeight:1,letterSpacing:"-0.02em",color:"#fff"}}>{liveTeams.filter(tm=>tm.students.every(st=>st.checkedIn)).length}/{liveTeams.length}</div>
             </div>
           </div>
         </div>
         <div style={{marginBottom:16}}>
           <select value={sel} onChange={e=>setSel(parseInt(e.target.value))} style={{width:"100%",maxWidth:280,padding:"12px 14px",background:"#fff",border:`1px solid ${s.border}`,borderRadius:12,color:s.txt,fontSize:13,fontFamily:"inherit",cursor:"pointer"}}>
-            {teams.map(tm=><option key={tm.id} value={tm.id}>{tm.name} ({tm.students.filter(st=>st.checkedIn).length}/{tm.students.length})</option>)}
+            {liveTeams.map(tm=><option key={tm.id} value={tm.id}>{tm.name} ({tm.students.filter(st=>st.checkedIn).length}/{tm.students.length})</option>)}
           </select>
         </div>
         {team&&<CheckinList team={team} onChk={onChk} canToggle/>}
@@ -1293,8 +1297,31 @@ function PgAnn({user,items,onAdd,onPin,onEdit,onDel}){
   );
 }
 
-function PgContacts({teams,smList=[]}){
+function PgContacts({teams,mentors=[]}){
   const[tab,setTab]=useState("jm");
+  // Contacts are derived from the users collection (via /api/mentors), so they
+  // stay in sync with the Admin Console Users tab.
+  const teamName=(tid)=>{const t=teams.find(x=>x.id===tid);return t?t.name:(tid!=null?`Team ${tid}`:"—");};
+  const jms=mentors.filter(m=>m.role==="junior_mentor").sort((a,b)=>(a.teamId||0)-(b.teamId||0)||a.name.localeCompare(b.name));
+  const sms=mentors.filter(m=>m.role==="senior_mentor").sort((a,b)=>a.name.localeCompare(b.name));
+  const rows=tab==="jm"?jms:sms;
+  const card=(m,sub)=>(
+    <div key={m.id} style={{borderRadius:18,padding:"16px 22px",background:"#fafafb",border:"1px solid #ececef",display:"flex",alignItems:"center",gap:14,transition:"transform 0.16s"}}
+      onMouseEnter={e=>e.currentTarget.style.transform="translateX(3px)"}
+      onMouseLeave={e=>e.currentTarget.style.transform=""}>
+      <div style={{width:40,height:40,borderRadius:12,background:"#efedfb",color:s.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,flexShrink:0}}>
+        {m.name.split(" ").pop()?.[0]||"M"}
+      </div>
+      <div style={{flex:1}}>
+        <div style={{fontSize:15,fontWeight:700,color:"#0d0f16"}}>{m.name}</div>
+        <div style={{fontSize:12,color:s.txt2,marginTop:3}}>{sub}</div>
+      </div>
+      <div style={{textAlign:"right"}}>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:s.txt2}}>{m.phone||"—"}</div>
+        <div style={{fontSize:11,color:s.txtM,marginTop:3}}>{m.email||"—"}</div>
+      </div>
+    </div>
+  );
   return(
     <div style={{animation:"fadeUp 0.4s ease"}}>
       <PageHeader eyebrow="Directory">Contacts</PageHeader>
@@ -1303,50 +1330,16 @@ function PgContacts({teams,smList=[]}){
         <Pill active={tab==="sm"} onClick={()=>setTab("sm")}>Senior Mentors</Pill>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {tab==="jm"&&teams.length===0?(
-          <EmptyState icon={<I.Ppl/>} title="No teams set up" msg="Teams will populate once they're seeded or added."/>
-        ):tab==="jm"?teams.map(tm=>(
-          <div key={tm.id} style={{borderRadius:18,padding:"16px 22px",background:"#fafafb",border:"1px solid #ececef",display:"flex",alignItems:"center",gap:14,transition:"transform 0.16s"}}
-            onMouseEnter={e=>e.currentTarget.style.transform="translateX(3px)"}
-            onMouseLeave={e=>e.currentTarget.style.transform=""}>
-            <div style={{width:40,height:40,borderRadius:12,background:"#efedfb",color:s.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,flexShrink:0}}>
-              {tm.jm.split(" ").pop()?.[0]||"M"}
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:15,fontWeight:700,color:"#0d0f16"}}>{tm.jm}</div>
-              <div style={{fontSize:12,color:s.txt2,marginTop:3}}>{tm.name}</div>
-            </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:s.txt2}}>{tm.jmPhone}</div>
-              <div style={{fontSize:11,color:s.txtM,marginTop:3}}>{tm.jmEmail}</div>
-            </div>
-          </div>
-        )):smList.length===0?(
-          <EmptyState icon={<I.Phn/>} title="No senior mentors listed" msg="Add them via Admin Console → Senior Mentors."/>
-        ):smList.map((sm,i)=>(
-          <div key={i} style={{borderRadius:18,padding:"16px 22px",background:"#fafafb",border:"1px solid #ececef",display:"flex",alignItems:"center",gap:14,transition:"transform 0.16s"}}
-            onMouseEnter={e=>e.currentTarget.style.transform="translateX(3px)"}
-            onMouseLeave={e=>e.currentTarget.style.transform=""}>
-            <div style={{width:40,height:40,borderRadius:12,background:"#efedfb",color:s.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,flexShrink:0}}>
-              {sm.name.split(" ").pop()?.[0]||"S"}
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:15,fontWeight:700,color:"#0d0f16"}}>{sm.name}</div>
-              <div style={{fontSize:12,color:s.txt2,marginTop:3}}>{sm.teams}</div>
-            </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:s.txt2}}>{sm.phone}</div>
-              <div style={{fontSize:11,color:s.txtM,marginTop:3}}>{sm.email}</div>
-            </div>
-          </div>
-        ))}
+        {rows.length===0
+          ?<EmptyState icon={<I.Phn/>} title={tab==="jm"?"No junior mentors":"No senior mentors"} msg="Mentors appear here once added in Admin Console → Users."/>
+          :rows.map(m=>card(m,tab==="jm"?teamName(m.teamId):"Senior Mentor"))}
       </div>
     </div>
   );
 }
 
 function PgSubmission({user,teams,submissions,onUpdate}){
-  const data=teams.map(tm=>{
+  const data=teams.filter(tm=>(tm.students||[]).length>0).map(tm=>{
     const rec=submissions.find(x=>x.teamId===tm.id);
     return{teamId:tm.id,name:tm.name,jm:tm.jm,submitted:rec?.submitted||false,by:rec?.by||null,ts:rec?.ts||null};
   });
@@ -1566,8 +1559,8 @@ function PasswordRevealModal({creds,onClose}){
 
 function AdminUsersTable({section}){
   const{items,actions,reload}=section;
-  const addFields=[{k:"name",l:"Name"},{k:"username",l:"Username"},{k:"email",l:"Email (for credentials)"},{k:"role",l:"Role",options:[{v:"student",l:"Student"},{v:"junior_mentor",l:"JM"},{v:"senior_mentor",l:"SM"},{v:"admin",l:"Admin"}]},{k:"teamId",l:"Team ID",type:"number"}];
-  const editFields=[{k:"name",l:"Name"},{k:"email",l:"Email"},{k:"role",l:"Role",options:[{v:"student",l:"Student"},{v:"junior_mentor",l:"JM"},{v:"senior_mentor",l:"SM"},{v:"admin",l:"Admin"}]},{k:"teamId",l:"Team ID",type:"number"}];
+  const addFields=[{k:"name",l:"Name"},{k:"username",l:"Username"},{k:"email",l:"Email (for credentials)"},{k:"phone",l:"Phone"},{k:"role",l:"Role",options:[{v:"student",l:"Student"},{v:"junior_mentor",l:"JM"},{v:"senior_mentor",l:"SM"},{v:"admin",l:"Admin"}]},{k:"teamId",l:"Team ID",type:"number"}];
+  const editFields=[{k:"name",l:"Name"},{k:"email",l:"Email"},{k:"phone",l:"Phone"},{k:"role",l:"Role",options:[{v:"student",l:"Student"},{v:"junior_mentor",l:"JM"},{v:"senior_mentor",l:"SM"},{v:"admin",l:"Admin"}]},{k:"teamId",l:"Team ID",type:"number"}];
   const[editingId,setEditingId]=useState(null);
   const[adding,setAdding]=useState(false);
   const[creds,setCreds]=useState(null);
@@ -1756,10 +1749,31 @@ function AdminScheduleEditor({section}){
   );
 }
 
+// Read-only view of senior mentors, derived from the users collection. Editing
+// happens in the Users tab; this stays in sync automatically.
+function AdminSmTable({section}){
+  const sms=(section.mentors||[]).filter(m=>m.role==="senior_mentor").sort((a,b)=>a.name.localeCompare(b.name));
+  return(
+    <div>
+      <div style={{fontSize:12,color:s.txt2,marginBottom:14,padding:"10px 14px",borderRadius:10,background:"#fff",border:`1px solid ${s.border}`,lineHeight:1.5}}>Senior mentors are managed in the <strong>Users</strong> tab — add, edit, or remove them there and this list updates automatically.</div>
+      {sms.length===0&&<div style={{padding:14,color:s.txt2,fontSize:13}}>No senior mentors yet.</div>}
+      {sms.map(m=>(
+        <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,background:"#fafafb",border:`1px solid ${s.border}`,marginBottom:6}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:13,color:s.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</div>
+            <div style={{fontSize:11,color:s.txt2}}>{m.email||"—"}</div>
+          </div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:s.txt2}}>{m.phone||"—"}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PgAdmin({api}){
   const sections={
     sched:{label:"Schedule",fields:[{k:"time",l:"Time"},{k:"ev",l:"Event"},{k:"loc",l:"Location"},{k:"day",l:"Day",type:"number"},{k:"type",l:"Type",options:[{v:"transport",l:"Transport"},{v:"logistics",l:"Logistics"},{v:"ceremony",l:"Ceremony"},{v:"competition",l:"Competition"},{v:"break",l:"Break"},{v:"mentoring",l:"Mentoring"}]},{k:"order",l:"Order",type:"number"}]},
-    sm:{label:"Senior Mentors",fields:[{k:"name",l:"Name"},{k:"phone",l:"Phone"},{k:"email",l:"Email"},{k:"teams",l:"Teams Range"}]},
+    sm:{label:"Senior Mentors"},
     venue:{label:"Venue",fields:[{k:"name",l:"Name"},{k:"floor",l:"Floor",options:[{v:"1F",l:"1F"},{v:"2F",l:"2F"},{v:"3F",l:"3F"}]},{k:"purpose",l:"Purpose"},{k:"cap",l:"Capacity"}]},
     prelim:{label:"Prelim Brackets",fields:[{k:"teams",l:"Team IDs (csv)",type:"csv-num"},{k:"time",l:"Time"},{k:"room",l:"Room"}]},
     rooms:{label:"Rooms"},
@@ -1782,6 +1796,8 @@ function PgAdmin({api}){
           <AdminRoomsTable section={api.rooms}/>:
         tab==="users"?
           <AdminUsersTable section={api.users}/>:
+        tab==="sm"?
+          <AdminSmTable section={api.sm}/>:
         tab==="sched"?
           <AdminScheduleEditor section={api.sched}/>:
           <AdminCrudTable section={api[tab]} fields={current.fields}/>

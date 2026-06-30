@@ -8,7 +8,6 @@ import {
   buildQna,
   buildAnnouncements,
   buildSchedule,
-  buildMentorsSM,
   buildVenue,
   buildPrelim,
   buildTransport,
@@ -37,7 +36,7 @@ export async function POST() {
   const db = await getDb();
   const collections = [
     "teams", "submissions", "users", "qna", "announcements",
-    "schedule", "mentors_sm", "venue", "prelim",
+    "schedule", "venue", "prelim",
     "transport", "sessions",
   ];
   await Promise.all(collections.map((c) => db.collection(c).deleteMany({})));
@@ -52,7 +51,6 @@ export async function POST() {
     db.collection("qna").insertMany(buildQna()),
     db.collection("announcements").insertMany(buildAnnouncements()),
     db.collection("schedule").insertMany(buildSchedule()),
-    db.collection("mentors_sm").insertMany(buildMentorsSM()),
     db.collection("venue").insertMany(buildVenue()),
     db.collection("prelim").insertMany(buildPrelim()),
     db.collection("transport").insertOne(buildTransport()),
